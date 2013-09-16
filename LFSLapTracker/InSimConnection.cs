@@ -13,6 +13,7 @@ namespace LFSLapTracker
 {
     class InSimConnection
     {
+        private static bool s_ConnectToLocal = true;
         private static bool s_TestWithAI = false;
 
         public void Run()
@@ -24,13 +25,24 @@ namespace LFSLapTracker
                 m_InSim.Disconnected += OnDisconnected;
                 m_InSim.InSimError += OnError;
 
+                Bind<IS_NCN>(OnNewConnection);
+                Bind<IS_NPL>(OnNewPlayer);
+                Bind<IS_STA>(OnStateInfo);
+                Bind<IS_PLP>(OnPlayerPits);
+                Bind<IS_PLA>(OnPitLane);
+                Bind<IS_RST>(OnRaceStart);
+                Bind<IS_LAP>(OnLap);
+                Bind<IS_SPX>(OnSplit);
+                Bind<IS_NLP>(OnNodeAndLap);
+                Bind<IS_SMALL>(OnSmallPacket);
+
                 Console.WriteLine("Attempting to connect...");
 
                 while (!m_InSim.IsConnected)
                 {
                     try
                     {
-                        string host = s_TestWithAI ? "127.0.0.1" : "192.168.0.3";
+                        string host = s_ConnectToLocal ? "127.0.0.1" : "192.168.0.3";
 
                         m_InSim.Initialize(new InSimSettings
                         {
@@ -40,17 +52,6 @@ namespace LFSLapTracker
                             Flags = InSimFlags.ISF_NLP | InSimFlags.ISF_LOCAL,
                             Interval = 10,
                         });
-
-                        m_InSim.Bind<IS_NCN>(OnNewConnection);
-                        m_InSim.Bind<IS_NPL>(OnNewPlayer);
-                        m_InSim.Bind<IS_STA>(OnStateInfo);
-                        m_InSim.Bind<IS_PLP>(OnPlayerPits);
-                        m_InSim.Bind<IS_PLA>(OnPitLane);
-                        m_InSim.Bind<IS_RST>(OnRaceStart);
-                        m_InSim.Bind<IS_LAP>(OnLap);
-                        m_InSim.Bind<IS_SPX>(OnSplit);
-                        m_InSim.Bind<IS_NLP>(OnNodeAndLap);
-                        m_InSim.Bind<IS_SMALL>(OnSmallPacket);
 
                         SendTiny(TinyType.TINY_SST);
                         SendTiny(TinyType.TINY_RST);
@@ -97,6 +98,16 @@ namespace LFSLapTracker
                     Thread.Sleep(10);
                 }
             }
+        }
+
+        private void Bind<T>(Action<InSim, T> callback) where T : IPacket
+        {
+            // Keep a reference to callbacks, as InSim will only keep a WeakReference, which may be garbage collected
+            if (!m_Callbacks.Contains(callback))
+            {
+                m_Callbacks.Add(callback);
+            }
+            m_InSim.Bind<T>(callback);
         }
 
         private void SendTiny(TinyType type)
@@ -371,6 +382,8 @@ namespace LFSLapTracker
         private static int s_MaxNodeJump = 20;
 
         private InSim m_InSim;
+        List<object> m_Callbacks = new List<object>();
+
         private byte m_LocalConnectionId;
         private byte m_LocalPlayerId;
         private bool m_InGame;
