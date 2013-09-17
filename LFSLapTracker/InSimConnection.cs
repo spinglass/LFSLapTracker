@@ -14,7 +14,7 @@ namespace LFSLapTracker
     class InSimConnection
     {
         private static bool s_ConnectToLocal = true;
-        private static bool s_TestWithAI = false;
+        private static bool s_TestWithAI = true;
 
         public void Run()
         {
@@ -71,17 +71,17 @@ namespace LFSLapTracker
                         {
                             if (m_LapDelta < double.MaxValue)
                             {
-                                string sign;
+                                string colour;
                                 double delta = m_LapDelta;
                                 if (delta < 0.0)
                                 {
-                                    sign = "^2";
+                                    colour = "^2";
                                 }
                                 else
                                 {
-                                    sign = "^1+";
+                                    colour = "^1";
                                 }
-                                SendButton("{0}{1:F2}", sign, delta);
+                                SendButton(colour + Utility.ToTimeDeltaString(delta));
                             }
                             else
                             {
@@ -227,7 +227,7 @@ namespace LFSLapTracker
                 if (m_BestSplitTimes != null)
                 {
                     double time = m_BestSplitTimes.Last();
-                    string timeStr = StringHelper.ToLapTimeString(TimeSpan.FromSeconds(time));
+                    string timeStr = Utility.ToTimeString(time);
                     SendMessage("Best lap: " + timeStr);
                 }
             }
@@ -250,7 +250,7 @@ namespace LFSLapTracker
             if (packet.PLID == m_LocalPlayerId)
             {
                 double lapTime = packet.LTime.TotalSeconds;
-                Console.WriteLine("Lap {0}: {1:F2}", packet.LapsDone, lapTime);
+                Console.WriteLine("Lap {0}: {1}", packet.LapsDone, Utility.ToTimeString(lapTime));
                 OnSplit(lapTime, m_Track.NumSectors - 1, true);
 
                 if (m_BestSplitTimes == null || lapTime < m_BestSplitTimes.Last())
@@ -259,7 +259,7 @@ namespace LFSLapTracker
                     m_BestSplitTimes = m_CurrentSplitTimes;
                     m_BestNodeTimes = m_CurrentNodeTimes;
 
-                    string timeStr = StringHelper.ToLapTimeString(TimeSpan.FromSeconds(lapTime));
+                    string timeStr = Utility.ToTimeString(lapTime);
                     SendMessage("New best lap: " + timeStr);
                 }
 
@@ -275,7 +275,7 @@ namespace LFSLapTracker
         {
             if (packet.PLID == m_LocalPlayerId)
             {
-                Console.WriteLine("Split {0}: {1:F2}", packet.Split, packet.STime.TotalSeconds);
+                Console.WriteLine("Split {0}: {1}", packet.Split, Utility.ToTimeString(packet.STime));
                 OnSplit(packet.STime.TotalSeconds, packet.Split - 1, false);
             }
         }
@@ -283,28 +283,28 @@ namespace LFSLapTracker
         private void OnSplit(double time, int split, bool lap)
         {
             m_CurrentSplitTimes[split] = time;
-            string timeStr = StringHelper.ToLapTimeString(TimeSpan.FromSeconds(time)); //
+            string timeStr = Utility.ToTimeString(time);
 
             // Compare to best lap
-            if (m_BestSplitTimes == null)
+            if (m_BestSplitTimes == null || m_BestSplitTimes[split] == 0.0)
             {
                 SendButton("^7" + timeStr);
             }
             else
             {
-                string sign2;
+                string colour;
                 double delta = time - m_BestSplitTimes[split];
                 if (delta < 0.0)
                 {
                     // Beat best split
-                    sign2 = "^2";
+                    colour = "^2";
                 }
                 else
                 {
                     // Failed to beat best split
-                    sign2 = "^1+";
+                    colour = "^1";
                 }
-                SendButton("^7{0}  {1}{2:F2}", timeStr, sign2, delta);
+                SendButton("^7{0}  {1}{2}", timeStr, colour, Utility.ToTimeDeltaString(delta));
             }
 
             // Show button for 6 seconds
