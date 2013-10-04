@@ -69,11 +69,11 @@ namespace LFSLapTracker
                     {
                         if (m_RaceTime > m_NextUpdateTime)
                         {
-                            if (m_LapDelta < double.MaxValue)
+                            LapTimeDelta delta = m_LapDelta;
+                            if (delta.IsValid)
                             {
                                 string colour;
-                                double delta = m_LapDelta;
-                                if (delta < 0.0)
+                                if (delta.IsNegative)
                                 {
                                     colour = "^2";
                                 }
@@ -81,7 +81,7 @@ namespace LFSLapTracker
                                 {
                                     colour = "^1";
                                 }
-                                SendButton(colour + Utility.ToTimeDeltaString(delta));
+                                SendButton(colour + delta);
                             }
                             else
                             {
@@ -226,9 +226,7 @@ namespace LFSLapTracker
 
                 if (m_BestSplitTimes != null)
                 {
-                    double time = m_BestSplitTimes.Last();
-                    string timeStr = Utility.ToTimeString(time);
-                    SendMessage("Best lap: " + timeStr);
+                    SendMessage("Best lap: " + m_BestSplitTimes.Last());
                 }
             }
             else
@@ -249,22 +247,28 @@ namespace LFSLapTracker
             DateTime now = DateTime.UtcNow;
             if (packet.PLID == m_LocalPlayerId)
             {
-                double lapTime = packet.LTime.TotalSeconds;
-                Console.WriteLine("Lap {0}: {1}", packet.LapsDone, Utility.ToTimeString(lapTime));
-                OnSplit(lapTime, m_Track.NumSectors - 1, true);
-
-                if (m_BestSplitTimes == null || lapTime < m_BestSplitTimes.Last())
+                LapTime lapTime = new LapTime(packet.LTime.TotalSeconds);
+                if (lapTime.IsValid)
                 {
-                    // Beat best lap (or first lap) - promote current split and node times to best
-                    m_BestSplitTimes = m_CurrentSplitTimes;
-                    m_BestNodeTimes = m_CurrentNodeTimes;
+                    Console.WriteLine("Lap {0}: {1}", packet.LapsDone, lapTime);
+                    OnSplit(lapTime, m_Track.NumSectors - 1, true);
 
-                    string timeStr = Utility.ToTimeString(lapTime);
-                    SendMessage("New best lap: " + timeStr);
+                    if (m_BestSplitTimes == null || lapTime < m_BestSplitTimes.Last())
+                    {
+                        // Beat best lap (or first lap) - promote current split and node times to best
+                        m_BestSplitTimes = m_CurrentSplitTimes;
+                        m_BestNodeTimes = m_CurrentNodeTimes;
+
+                        SendMessage("New best lap: " + lapTime);
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("New lap");
                 }
 
                 // Reset for new lap
-                m_CurrentSplitTimes = new double[m_Track.NumSectors];
+                m_CurrentSplitTimes = new LapTime[m_Track.NumSectors];
                 m_CurrentNodeTimes = new double[m_Track.NumNodes];
                 m_Node = 0;
                 m_LapStartTime = m_RaceTime;
@@ -275,36 +279,46 @@ namespace LFSLapTracker
         {
             if (packet.PLID == m_LocalPlayerId)
             {
-                Console.WriteLine("Split {0}: {1}", packet.Split, Utility.ToTimeString(packet.STime));
-                OnSplit(packet.STime.TotalSeconds, packet.Split - 1, false);
-            }
-        }
-
-        private void OnSplit(double time, int split, bool lap)
-        {
-            m_CurrentSplitTimes[split] = time;
-            string timeStr = Utility.ToTimeString(time);
-
-            // Compare to best lap
-            if (m_BestSplitTimes == null || m_BestSplitTimes[split] == 0.0)
-            {
-                SendButton("^7" + timeStr);
-            }
-            else
-            {
-                string colour;
-                double delta = time - m_BestSplitTimes[split];
-                if (delta < 0.0)
+                LapTime splitTime = new LapTime(packet.STime.TotalSeconds);
+                if (splitTime.IsValid)
                 {
-                    // Beat best split
-                    colour = "^2";
+                    Console.WriteLine("Split {0}: {1}", packet.Split, splitTime);
+                    OnSplit(splitTime, packet.Split - 1, false);
                 }
                 else
                 {
-                    // Failed to beat best split
-                    colour = "^1";
+                    Console.WriteLine("New split");
                 }
-                SendButton("^7{0}  {1}{2}", timeStr, colour, Utility.ToTimeDeltaString(delta));
+            }
+        }
+
+        private void OnSplit(LapTime splitTime, int split, bool lap)
+        {
+            if (splitTime.IsValid)
+            {
+                m_CurrentSplitTimes[split] = splitTime;
+
+                // Compare to best lap
+                if (m_BestSplitTimes == null || !m_BestSplitTimes[split].IsValid)
+                {
+                    SendButton("^7" + splitTime);
+                }
+                else
+                {
+                    string colour;
+                    LapTimeDelta delta = splitTime - m_BestSplitTimes[split];
+                    if (delta.IsNegative)
+                    {
+                        // Beat best split
+                        colour = "^2";
+                    }
+                    else
+                    {
+                        // Failed to beat best split
+                        colour = "^1";
+                    }
+                    SendButton("^7{0}  {1}{2}", splitTime, colour, delta);
+                }
             }
 
             // Show button for 6 seconds
@@ -338,11 +352,11 @@ namespace LFSLapTracker
                             {
                                 if (m_CurrentNodeTimes[node] > 0.0 && m_BestNodeTimes[node] > 0.0)
                                 {
-                                    m_LapDelta = m_CurrentNodeTimes[node] - m_BestNodeTimes[node];
+                                    m_LapDelta = new LapTimeDelta(m_CurrentNodeTimes[node] - m_BestNodeTimes[node]);
                                 }
                                 else
                                 {
-                                    m_LapDelta = double.MaxValue;
+                                    m_LapDelta = LapTimeDelta.Invalid;
                                 }
                             }
                         }
@@ -362,10 +376,10 @@ namespace LFSLapTracker
         private void ResetPlayer()
         {
             m_Node = -1;
-            m_LapDelta = double.MaxValue;
+            m_LapDelta = LapTimeDelta.Invalid;
             if (m_Track != null)
             {
-                m_CurrentSplitTimes = new double[m_Track.NumSectors];
+                m_CurrentSplitTimes = new LapTime[m_Track.NumSectors];
                 m_CurrentNodeTimes = new double[m_Track.NumNodes];
             }
             ClearButtons();
@@ -394,14 +408,14 @@ namespace LFSLapTracker
 
         private double m_RaceTime;
         private double m_LapStartTime;
-        private double m_LapDelta;
+        private LapTimeDelta m_LapDelta;
 
         private double m_NextUpdateTime;
 
         private double[] m_BestNodeTimes;
         private double[] m_CurrentNodeTimes;
 
-        private double[] m_BestSplitTimes;
-        private double[] m_CurrentSplitTimes;
+        private LapTime[] m_BestSplitTimes;
+        private LapTime[] m_CurrentSplitTimes;
     }
 }
