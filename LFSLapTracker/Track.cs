@@ -38,8 +38,12 @@ namespace LFSLapTracker
 
         public int GetNodeIndex(int nodeId)
         {
-            int index = (nodeId - m_Finish + m_NumNodes) % m_NumNodes;
-            return index;
+            if (m_NumNodes > 0)
+            {
+                int index = (nodeId - m_Finish + m_NumNodes) % m_NumNodes;
+                return index;
+            }
+            return -1;
         }
 
         private string m_ShortName;
