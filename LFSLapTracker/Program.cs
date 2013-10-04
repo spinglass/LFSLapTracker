@@ -10,7 +10,8 @@ namespace LFSLapTracker
     {
         static void Main(string[] args)
         {
-            InSimConnection m_InSimConnection = new InSimConnection();
+            CommandLine commandLine = new CommandLine(args);
+            InSimConnection m_InSimConnection = new InSimConnection(commandLine);
             m_InSimConnection.Run();
         }
     }

@@ -13,8 +13,11 @@ namespace LFSLapTracker
 {
     class InSimConnection
     {
-        private static bool s_ConnectToLocal = true;
-        private static bool s_TestWithAI = true;
+        public InSimConnection(CommandLine commandLine)
+        {
+            m_Host = commandLine.GetValue("--host", "127.0.0.1");
+            m_UseAI = commandLine.Contains("--ai");
+        }
 
         public void Run()
         {
@@ -42,11 +45,9 @@ namespace LFSLapTracker
                 {
                     try
                     {
-                        string host = s_ConnectToLocal ? "127.0.0.1" : "192.168.0.3";
-
                         m_InSim.Initialize(new InSimSettings
                         {
-                            Host = host,
+                            Host = m_Host,
                             Port = 29999,
                             Admin = string.Empty,
                             Flags = InSimFlags.ISF_NLP | InSimFlags.ISF_LOCAL,
@@ -164,7 +165,7 @@ namespace LFSLapTracker
 
         private void OnNewPlayer(InSim inSim, IS_NPL packet)
         {
-            if (packet.UCID == m_LocalConnectionId && (s_TestWithAI || packet.PType == 0 || packet.PType == PlayerTypes.PLT_FEMALE))
+            if (packet.UCID == m_LocalConnectionId && (m_UseAI || packet.PType == 0 || packet.PType == PlayerTypes.PLT_FEMALE))
             {
                 m_LocalPlayerId = packet.PLID;
                 m_InPits = ((packet.Flags & PlayerFlags.PIF_INPITS) == PlayerFlags.PIF_INPITS);
@@ -395,8 +396,11 @@ namespace LFSLapTracker
 
         private static int s_MaxNodeJump = 20;
 
+        private string m_Host;
+        private bool m_UseAI;
+
         private InSim m_InSim;
-        List<object> m_Callbacks = new List<object>();
+        private List<object> m_Callbacks = new List<object>();
 
         private byte m_LocalConnectionId;
         private byte m_LocalPlayerId;
