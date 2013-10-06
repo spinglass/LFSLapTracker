@@ -21,6 +21,8 @@ namespace LFSLapTracker
 
         public void Run()
         {
+            m_RaceTimeOffset = new Stopwatch();
+
             while (true)
             {
                 m_InSim = new InSim();
@@ -36,7 +38,7 @@ namespace LFSLapTracker
                 Bind<IS_RST>(OnRaceStart);
                 Bind<IS_LAP>(OnLap);
                 Bind<IS_SPX>(OnSplit);
-                Bind<IS_NLP>(OnNodeAndLap);
+                Bind<IS_MCI>(OnMultiCarInfo);
                 Bind<IS_SMALL>(OnSmallPacket);
 
                 Console.WriteLine("Attempting to connect...");
@@ -50,7 +52,7 @@ namespace LFSLapTracker
                             Host = m_Host,
                             Port = 29999,
                             Admin = string.Empty,
-                            Flags = InSimFlags.ISF_NLP | InSimFlags.ISF_LOCAL,
+                            Flags = InSimFlags.ISF_MCI | InSimFlags.ISF_LOCAL,
                             Interval = 10,
                         });
 
@@ -68,7 +70,8 @@ namespace LFSLapTracker
                 {
                     if (m_InGame && !m_InPits)
                     {
-                        if (m_RaceTime > m_NextUpdateTime)
+                        double raceTime = EstimatedRaceTime;
+                        if (raceTime > m_NextUpdateTime)
                         {
                             LapTimeDelta delta = m_LapDelta;
                             if (delta.IsValid)
@@ -89,7 +92,7 @@ namespace LFSLapTracker
                                 ClearButtons();
                             }
 
-                            m_NextUpdateTime = m_RaceTime + 1.0;
+                            m_NextUpdateTime = raceTime + 1.0;
                         }
 
                         // Request game time
@@ -99,6 +102,11 @@ namespace LFSLapTracker
                     Thread.Sleep(10);
                 }
             }
+        }
+
+        private double EstimatedRaceTime
+        {
+            get { return m_RaceTime + m_RaceTimeOffset.Elapsed.TotalSeconds; }
         }
 
         private void Bind<T>(Action<InSim, T> callback) where T : IPacket
@@ -245,7 +253,9 @@ namespace LFSLapTracker
 
         private void OnLap(InSim inSim, IS_LAP packet)
         {
-            DateTime now = DateTime.UtcNow;
+            // Bank the estimated race time as early as we can
+            double raceTime = EstimatedRaceTime;
+
             if (packet.PLID == m_LocalPlayerId)
             {
                 LapTime lapTime = new LapTime(packet.LTime.TotalSeconds);
@@ -271,8 +281,8 @@ namespace LFSLapTracker
                 // Reset for new lap
                 m_CurrentSplitTimes = new LapTime[m_Track.NumSectors];
                 m_CurrentNodeTimes = new double[m_Track.NumNodes];
-                m_Node = 0;
-                m_LapStartTime = m_RaceTime;
+                m_NodeIndex = 0;
+                m_LapStartTime = raceTime;
             }
         }
 
@@ -326,34 +336,46 @@ namespace LFSLapTracker
             m_NextUpdateTime = m_RaceTime + 6.0;
         }
 
-        private void OnNodeAndLap(InSim inSim, IS_NLP packet)
+        private void OnMultiCarInfo(InSim inSim, IS_MCI packet)
         {
-            DateTime now = DateTime.Now;
+            // Bank the estimated race time as early as we can
+            double raceTime = EstimatedRaceTime;
+
             if (m_InGame && !m_InPits && m_LocalPlayerId != byte.MaxValue)
             {
-                foreach (NodeLap nodeLap in packet.Info)
+                foreach (CompCar car in packet.Info)
                 {
-                    if (nodeLap.PLID == m_LocalPlayerId)
+                    if (car.PLID == m_LocalPlayerId)
                     {
                         // Convert to node index
-                        int node = m_Track.GetNodeIndex(nodeLap.Node);
+                        int nodeIndex = m_Track.GetNodeIndex(car.Node);
 
-                        if (m_Node == -1 && node < s_MaxNodeJump)
+                        if (m_NodeIndex == -1 && nodeIndex < s_MaxNodeJump)
                         {
                             Console.WriteLine("Starting first lap");
-                            m_LapStartTime = m_RaceTime;
+                            m_LapStartTime = raceTime;
                         }
 
-                        if (m_Node < node && node < m_Node + s_MaxNodeJump)
+                        if (m_NodeIndex < nodeIndex && nodeIndex < m_NodeIndex + s_MaxNodeJump)
                         {
-                            m_CurrentNodeTimes[node] = m_RaceTime - m_LapStartTime;
-                            m_Node = node;
+                            // Estimate distance beyond node
+                            TrackPath.Node node = m_Track.GetNode(nodeIndex);
+                            TrackPath.Point carPos = new TrackPath.Point((double)car.X / 65536, (double)car.Y / 65536, (double)car.Z / 65536);
+                            TrackPath.Vector nodeToCar = carPos - node.Centre;
+                            double distance = nodeToCar.X * node.Direction.X + nodeToCar.Y * node.Direction.Y + nodeToCar.Z * node.Direction.Z;
+
+                            // Estimate time from node
+                            double speed = (double)car.Speed * 100.0 / 32768;
+                            double timeFromNode = distance / speed;
+
+                            m_CurrentNodeTimes[nodeIndex] = raceTime - m_LapStartTime - timeFromNode;
+                            m_NodeIndex = nodeIndex;
 
                             if (m_BestNodeTimes != null)
                             {
-                                if (m_CurrentNodeTimes[node] > 0.0 && m_BestNodeTimes[node] > 0.0)
+                                if (m_CurrentNodeTimes[nodeIndex] > 0.0 && m_BestNodeTimes[nodeIndex] > 0.0)
                                 {
-                                    m_LapDelta = new LapTimeDelta(m_CurrentNodeTimes[node] - m_BestNodeTimes[node]);
+                                    m_LapDelta = new LapTimeDelta(m_CurrentNodeTimes[nodeIndex] - m_BestNodeTimes[nodeIndex]);
                                 }
                                 else
                                 {
@@ -361,6 +383,8 @@ namespace LFSLapTracker
                                 }
                             }
                         }
+
+                        break;
                     }
                 }
             }
@@ -370,13 +394,14 @@ namespace LFSLapTracker
         {
             if (packet.SubT == SmallType.SMALL_RTP)
             {
+                m_RaceTimeOffset.Restart();
                 m_RaceTime = 0.01 * packet.UVal;
             }
         }
 
         private void ResetPlayer()
         {
-            m_Node = -1;
+            m_NodeIndex = -1;
             m_LapDelta = LapTimeDelta.Invalid;
             if (m_Track != null)
             {
@@ -408,9 +433,10 @@ namespace LFSLapTracker
         private bool m_InPits;
         private Track m_Track;
 
-        private int m_Node;
+        private int m_NodeIndex;
 
         private double m_RaceTime;
+        private Stopwatch m_RaceTimeOffset;
         private double m_LapStartTime;
         private LapTimeDelta m_LapDelta;
 

@@ -1,5 +1,6 @@
 ﻿using InSimDotNet.Helpers;
 using InSimDotNet.Packets;
+using LFSLapTracker.TrackPath;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -34,6 +35,9 @@ namespace LFSLapTracker
             {
                 m_Splits.Add(packet.Split3);
             }
+
+            m_Path = new Path();
+            m_Path.Load("Content/" + m_ShortName + ".pth");
         }
 
         public int GetNodeIndex(int nodeId)
@@ -46,10 +50,16 @@ namespace LFSLapTracker
             return -1;
         }
 
+        public Node GetNode(int nodeIndex)
+        {
+            return m_Path.Nodes[nodeIndex];
+        }
+
         private string m_ShortName;
         private string m_LongName;
         private int m_NumNodes;
         private int m_Finish;
         private List<int> m_Splits;
+        private Path m_Path;
     }
 }
