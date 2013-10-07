@@ -16,6 +16,7 @@ namespace LFSLapTracker
         public InSimConnection(CommandLine commandLine)
         {
             m_Host = commandLine.GetValue("--host", "127.0.0.1");
+            m_Port = commandLine.GetValue("--port", 29999);
             m_UseAI = commandLine.Contains("--ai");
         }
 
@@ -50,7 +51,7 @@ namespace LFSLapTracker
                         m_InSim.Initialize(new InSimSettings
                         {
                             Host = m_Host,
-                            Port = 29999,
+                            Port = m_Port,
                             Admin = string.Empty,
                             Flags = InSimFlags.ISF_MCI | InSimFlags.ISF_LOCAL,
                             Interval = 10,
@@ -422,6 +423,7 @@ namespace LFSLapTracker
         private static int s_MaxNodeJump = 20;
 
         private string m_Host;
+        private int m_Port;
         private bool m_UseAI;
 
         private InSim m_InSim;

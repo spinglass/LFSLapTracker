@@ -41,6 +41,19 @@ namespace LFSLapTracker
             return defaultValue;
         }
 
+        public int GetValue(string key, int defaultValue)
+        {
+            if (Contains(key))
+            {
+                int value;
+                if (int.TryParse(GetValue(key), out value))
+                {
+                    return value;
+                }
+            }
+            return defaultValue;
+        }
+
         Dictionary<string, string> m_Args;
     }
 }
