@@ -13,18 +13,16 @@ namespace LFSLapTracker
 {
     class InSimConnection
     {
-        public InSimConnection(CommandLine commandLine)
+        public InSimConnection(Settings settings)
         {
-            m_Host = commandLine.GetValue("--host", "127.0.0.1");
-            m_Port = commandLine.GetValue("--port", 29999);
-            m_UseAI = commandLine.Contains("--ai");
+            m_Settings = settings;
         }
 
         public void Run()
         {
             m_RaceTimeOffset = new Stopwatch();
 
-            while (true)
+            while (!m_Quit)
             {
                 m_InSim = new InSim();
                 m_InSim.Initialized += OnInitialized;
@@ -44,14 +42,14 @@ namespace LFSLapTracker
 
                 Console.WriteLine("Attempting to connect...");
 
-                while (!m_InSim.IsConnected)
+                while (!m_InSim.IsConnected && !m_Quit)
                 {
                     try
                     {
                         m_InSim.Initialize(new InSimSettings
                         {
-                            Host = m_Host,
-                            Port = m_Port,
+                            Host = m_Settings.Host,
+                            Port = m_Settings.Port,
                             Admin = string.Empty,
                             Flags = InSimFlags.ISF_MCI | InSimFlags.ISF_LOCAL,
                             Interval = 10,
@@ -67,7 +65,7 @@ namespace LFSLapTracker
                     Thread.Sleep(1000);
                 }
 
-                while (m_InSim.IsConnected)
+                while (m_InSim.IsConnected && !m_Quit)
                 {
                     if (m_InGame && !m_InPits)
                     {
@@ -101,8 +99,18 @@ namespace LFSLapTracker
                     }
 
                     Thread.Sleep(10);
+
+                    if (m_InSim.IsConnected && m_Quit)
+                    {
+                        m_InSim.Disconnect();
+                    }
                 }
             }
+        }
+
+        public void Quit()
+        {
+            m_Quit = true;
         }
 
         private double EstimatedRaceTime
@@ -174,7 +182,7 @@ namespace LFSLapTracker
 
         private void OnNewPlayer(InSim inSim, IS_NPL packet)
         {
-            if (packet.UCID == m_LocalConnectionId && (m_UseAI || packet.PType == 0 || packet.PType == PlayerTypes.PLT_FEMALE))
+            if (packet.UCID == m_LocalConnectionId && (m_Settings.UseAI || packet.PType == 0 || packet.PType == PlayerTypes.PLT_FEMALE))
             {
                 m_LocalPlayerId = packet.PLID;
                 m_InPits = ((packet.Flags & PlayerFlags.PIF_INPITS) == PlayerFlags.PIF_INPITS);
@@ -422,12 +430,10 @@ namespace LFSLapTracker
 
         private static int s_MaxNodeJump = 20;
 
-        private string m_Host;
-        private int m_Port;
-        private bool m_UseAI;
-
+        private Settings m_Settings;
         private InSim m_InSim;
         private List<object> m_Callbacks = new List<object>();
+        private bool m_Quit;
 
         private byte m_LocalConnectionId;
         private byte m_LocalPlayerId;

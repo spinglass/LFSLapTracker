@@ -47,6 +47,7 @@
     <Compile Include="CommandLine.cs" />
     <Compile Include="InSimConnection.cs" />
     <Compile Include="LapTimeDelta.cs" />
+    <Compile Include="Settings.cs" />
     <Compile Include="TrackPath\Node.cs" />
     <Compile Include="TrackPath\Path.cs" />
     <Compile Include="Program.cs" />
