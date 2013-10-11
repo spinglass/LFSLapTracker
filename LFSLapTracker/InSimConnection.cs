@@ -98,7 +98,7 @@ namespace LFSLapTracker
                         SendTiny(TinyType.TINY_GTH);
                     }
 
-                    Thread.Sleep(10);
+                    Thread.Sleep(40);
 
                     if (m_InSim.IsConnected && m_Quit)
                     {
